@@ -1,0 +1,1 @@
+# manal_market_fullbot
