@@ -1,71 +1,106 @@
-from fastapi import FastAPI, Request, BackgroundTasks
-import os
+# ===== Manal Market - TRADER Bot (FastAPI) =====
+# main.py  (for the TRADER bot only)
+# Environment variables required on Render:
+#   BOT_TOKEN       -> Telegram bot token for the trader bot
+#   WEBHOOK_URL     -> Full https url to /webhook  (e.g., https://your-app.onrender.com/webhook)
+
+from fastapi import FastAPI, Request
+import os, json
 import httpx
 
 app = FastAPI()
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-BOT_ROLE = os.getenv("BOT_ROLE", "user")
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip()
+API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
-def tg_send_message(chat_id: int, text: str):
-    """إرسال رسالة لتليجرام بخلفية سريعة مع مهلة صغيرة"""
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            client.post(f"{TELEGRAM_API_URL}/sendMessage",
-                        json={"chat_id": chat_id, "text": text})
-    except Exception:
-        # لا نُسقط الوِبهوك لو فشل الإرسال
-        pass
+# ---- helpers ----
+async def tg_send(chat_id: int, text: str, keyboard=None):
+    if not BOT_TOKEN:
+        return
+    payload = {"chat_id": chat_id, "text": text}
+    if keyboard:
+        payload["reply_markup"] = {
+            "keyboard": keyboard,
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.post(f"{API}/sendMessage", json=payload)
+
+# Trader keyboard (Arabic)
+TRADER_KB = [
+    [{"text": "📊 فتح عقد جديد"}, {"text": "📈 تعديل عقد"}],
+    [{"text": "📩 إرسال طلب"}, {"text": "⚙️ إعدادات الحساب"}],
+]
+
+WELCOME = "👋 مرحباً بك في نظام التداول *منال ماركت*!"
+HELP = (
+    "🧭 الأوامر المتاحة:\n"
+    "• /start - القائمة الرئيسية\n"
+    "• /menu  - لوحة الأزرار\n"
+    "• /help  - المساعدة\n"
+    "• /alerts - عرض الصفقات والتنبيهات (قريباً)\n"
+)
+
+def parse_text(update: dict) -> tuple[int|None, str]:
+    msg = update.get("message") or update.get("edited_message") or {}
+    chat = (msg.get("chat") or {})
+    return chat.get("id"), (msg.get("text") or "").strip()
 
 @app.post("/webhook")
-async def webhook(request: Request, bg: BackgroundTasks):
-    data = await request.json()
-
-    # حماية من التحديثات غير النصية
-    message = data.get("message") or {}
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    text = (message.get("text") or "").strip()
-
-    # إن لم يوجد نص أو chat_id نرجع OK فورًا
-    if not chat_id or not isinstance(text, str):
+async def webhook(request: Request):
+    update = await request.json()
+    chat_id, text = parse_text(update)
+    if not chat_id:
         return {"ok": True}
 
-    # منطق الردود
-    if BOT_ROLE == "user":
-        if text == "/start":
-            msg = "👋 مرحباً بك في نظام التداول منال ماركت!"
-        elif text == "📊 فتح عقد جديد":
-            msg = "تم فتح العقد بنجاح ✅"
-        elif text == "📈 تعديل عقد":
-            msg = "✏️ تم تعديل بيانات العقد."
-        elif text == "📩 إرسال طلب":
-            msg = "📬 تم إرسال الطلب للمراجعة."
-        elif text == "⚙️ إعدادات الحساب":
-            msg = "⚙️ يمكنك تعديل إعداداتك هنا."
-        else:
-            msg = "❗ استخدم الأوامر المتاحة للتفاعل مع النظام."
-    elif BOT_ROLE == "admin":
-        if text == "/start":
-            msg = "👑 لوحة التحكم لمشرف منال."
-        elif text == "📜 عرض الطلبات":
-            msg = "📜 جاري عرض جميع الطلبات..."
-        elif text == "⚙️ إعدادات النظام":
-            msg = "يمكنك تعديل إعدادات النظام من هنا."
-        else:
-            msg = "🔒 أوامر المشرف محدودة هنا."
-    else:
-        msg = "❗ تم التعرف على رسالة غير متوقعة."
+    # Commands
+    if text == "/start":
+        await tg_send(chat_id, WELCOME + "\n\n" + HELP, keyboard=TRADER_KB)
+    elif text == "/menu":
+        await tg_send(chat_id, "📋 هذه لوحة المتداول:", keyboard=TRADER_KB)
+    elif text == "/help":
+        await tg_send(chat_id, HELP, keyboard=TRADER_KB)
+    elif text == "/alerts":
+        await tg_send(chat_id, "🔔 سيتم عرض التنبيهات هنا قريباً.", keyboard=TRADER_KB)
 
-    # أضف مهمة الإرسال للخلفية وأرجع فورًا 200
-    bg.add_task(tg_send_message, chat_id, msg)
+    # Buttons
+    elif text == "📊 فتح عقد جديد":
+        await tg_send(chat_id, "✅ تم فتح العقد بنجاح.", keyboard=TRADER_KB)
+    elif text == "📈 تعديل عقد":
+        await tg_send(chat_id, "✏️ أرسل تفاصيل العقد المراد تعديله.", keyboard=TRADER_KB)
+    elif text == "📩 إرسال طلب":
+        await tg_send(chat_id, "📬 تم إرسال الطلب للمراجعة.", keyboard=TRADER_KB)
+    elif text == "⚙️ إعدادات الحساب":
+        await tg_send(chat_id, "⚙️ يمكنك تعديل إعداداتك من هنا.", keyboard=TRADER_KB)
+    else:
+        await tg_send(chat_id, "❗ استخدم الأوامر أو الأزرار للتفاعل مع النظام.", keyboard=TRADER_KB)
+
     return {"ok": True}
 
+# ---- convenience endpoints ----
 @app.get("/")
-def home():
-    return {"status": "running"}
+def root():
+    return {"status": "running", "role": "trader"}
 
+@app.get("/set_webhook")
+async def set_webhook():
+    if not (BOT_TOKEN and WEBHOOK_URL):
+        return {"ok": False, "error": "Missing BOT_TOKEN or WEBHOOK_URL"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{API}/setWebhook", params={"url": WEBHOOK_URL})
+        return r.json()
+
+@app.get("/delete_webhook")
+async def delete_webhook():
+    if not BOT_TOKEN:
+        return {"ok": False, "error": "Missing BOT_TOKEN"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{API}/deleteWebhook")
+        return r.json()
+
+# ---- local run ----
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 10000))
