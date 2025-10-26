@@ -51,3 +51,11 @@ async def webhook(request: Request):
 
         requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={"chat_id": chat_id, "text": msg})
     return {"ok": True}
+    import os
+from flask import Flask
+
+app = Flask(__name__)
+
+if _name_ == "_main_":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
