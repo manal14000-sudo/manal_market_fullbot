@@ -1,333 +1,357 @@
-# ===== Manal Market — ADMIN Bot (FastAPI) =====
-# admin_main.py
-# ----------------------------------------------
-# متطلبات البيئة (Render → Environment):
-#   BOT_TOKEN        : توكن بوت المشرف
-#   WEBHOOK_URL      : رابط https كاملاً لمسار /webhook  (مثال: https://your-app.onrender.com/webhook)
-#   CHANNEL_ID       : آي دي القناة الخاصة بالنشر (مثال: -1003267033079)
-#   TV_SECRET        : كلمة سر بسيطة للربط مع TradingView (مثال: mysecret)
+# ===== Manal Market - ADMIN Bot (FastAPI) =====
+# File: admin_main.py
+# Runs the Admin Telegram bot with full menus + TradingView webhook.
+# Environment variables on Render:
+#   BOT_TOKEN     -> Telegram bot token for ADMIN bot
+#   WEBHOOK_URL   -> Full https url to /webhook (e.g., https://your-app.onrender.com/webhook)
+#   CHANNEL_ID    -> Telegram channel ID (e.g., -1001234567890)
+#   ADMIN_ID      -> Single admin user id OR comma-separated list (e.g., "123,456")
+#   TV_SECRET     -> Shared secret string for TradingView alerts
 #
-# ملاحظات:
-# - هذا الإصدار يشمل قوائم المشرف، وتجميع بيانات "فتح عقد Call" على مراحل،
-#   مع نقطة /tv لقبول تنبيهات TradingView وإرسالها للقناة.
-# - يمكنك إضافة بقية الأوامر الفرعية لاحقاً بنفس نمط state machine المستخدم أدناه.
+# Optional:
+#   TELEGRAM_API_URL -> override API base (default https://api.telegram.org)
 
-from fastapi import FastAPI, Request
-import os, json, asyncio
+from fastapi import FastAPI, Request, HTTPException
+import os, json, asyncio, re
 import httpx
-from typing import Dict, Any, Optional
 
 app = FastAPI()
 
-# ==== ENV ====
 BOT_TOKEN   = os.getenv("BOT_TOKEN", "").strip()
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip()
-CHANNEL_ID  = int(os.getenv("CHANNEL_ID", "0") or "0")
-TV_SECRET   = os.getenv("TV_SECRET", "changeme").strip()
+CHANNEL_ID  = os.getenv("CHANNEL_ID", "").strip()
+ADMIN_ID    = os.getenv("ADMIN_ID", "").strip()
+TV_SECRET   = os.getenv("TV_SECRET", "").strip()
+API_BASE    = os.getenv("TELEGRAM_API_URL", "https://api.telegram.org").rstrip("/")
+API         = f"{API_BASE}/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
-API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
+def admin_ids():
+    if not ADMIN_ID: 
+        return set()
+    return {int(x.strip()) for x in str(ADMIN_ID).split(",") if x.strip().isdigit() or (x.strip().startswith("-") and x.strip()[1:].isdigit())}
 
-# ==== STATE (in-memory) ====
-# نخزن حالة إدخال كل مشرف (بالعادة مستخدم واحد) لتجميع المدخلات متعددة الخطوات.
-USER_STATE: Dict[int, Dict[str, Any]] = {}
+ADMINS = admin_ids()
 
-# ==== Keyboards ====
-def kb(rows):
-    return {"keyboard": rows, "resize_keyboard": True, "one_time_keyboard": False}
+# ------- helpers -------
+async def tg_send(chat_id: int | str, text: str, keyboard=None, parse_mode="HTML"):
+    if not BOT_TOKEN:
+        return
+    payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if keyboard:
+        payload["reply_markup"] = {
+            "keyboard": keyboard,
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
+    async with httpx.AsyncClient(timeout=15) as client:
+        await client.post(f"{API}/sendMessage", json=payload)
 
-MAIN_KB = kb([
+async def tg_send_channel(text: str, disable_web_page_preview=True, parse_mode="HTML"):
+    if not (BOT_TOKEN and CHANNEL_ID):
+        return {"ok": False, "error": "Missing BOT_TOKEN or CHANNEL_ID"}
+    payload = {
+        "chat_id": int(CHANNEL_ID) if CHANNEL_ID.lstrip("-").isdigit() else CHANNEL_ID,
+        "text": text,
+        "disable_web_page_preview": disable_web_page_preview,
+        "parse_mode": parse_mode
+    }
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(f"{API}/sendMessage", json=payload)
+        return r.json()
+
+def is_admin(chat_id: int) -> bool:
+    return (not ADMINS) or (chat_id in ADMINS)
+
+def parse_update(update: dict):
+    msg = update.get("message") or update.get("edited_message") or {}
+    chat = msg.get("chat") or {}
+    text = (msg.get("text") or "").strip()
+    return chat.get("id"), text
+
+# ------- Keyboards -------
+HOME_KB = [
     [{"text": "📊 التداول"}, {"text": "🧰 الأدوات المساعدة"}],
     [{"text": "🧠 إدارة النظام"}, {"text": "📈 الإحصاءات والتقارير"}],
     [{"text": "🎓 التدريب والدورات"}, {"text": "⚙️ القنوات والربط"}],
-])
+]
 
-TRADE_MAIN_KB = kb([
-    [{"text": "♦️ الأسهم"}, {"text": "♦️ الأوبشن"}],
-    [{"text": "↩️ رجوع"}, {"text": "🏠 الرئيسية"}],
-])
+TRADE_MAIN_KB = [
+    [{"text": "🔷 الأسهم"}, {"text": "🔷 الأوبشن"}],
+    [{"text": "⬅️ رجوع"}, {"text": "🏠 الرئيسية"}],
+]
 
-OPTIONS_KB = kb([
+TOOLS_KB = [
+    [{"text": "🧮 الحاسبة المالية"}, {"text": "🧮 حاسبة تعديل المتوسط"}],
+    [{"text": "💱 تحويل العملات (ريال↔دولار)"}],
+    [{"text": "⚙️ إعداد الرمز السري"}, {"text": "🌐 إعداد Webhook"}],
+    [{"text": "🧪 اختبار الإرسال للقناة"}, {"text": "🔧 إصلاح الربط السريع"}],
+    [{"text": "🔗 ربط البوت بالقناة"}, {"text": "⬅️ رجوع"}],
+    [{"text": "🏠 الرئيسية"}],
+]
+
+LINKS_KB = [
+    [{"text": "🛰️ إضافة قناة"}, {"text": "❌ إزالة قناة"}],
+    [{"text": "🔗 ربط البوت بالقناة"}, {"text": "🧪 اختبار الإرسال"}],
+    [{"text": "🔑 توليد رمز آمن جديد"}, {"text": "🌐 Webhook جديد"}],
+    [{"text": "🔎 قنواتي الحالية"}],
+    [{"text": "⬅️ رجوع"}, {"text": "🏠 الرئيسية"}],
+]
+
+STOCKS_KB = [
+    [{"text": "🏛️ تحليل الشركات"}, {"text": "📉 نتائج الصفقات"}],
+    [{"text": "🔔 تنبيهات الأسهم"}, {"text": "⚡ مضاربة لحظية"}],
+    [{"text": "📊 تقارير الأداء"}, {"text": "💡 إضاءات فنية"}],
+    [{"text": "⬅️ رجوع"}, {"text": "🏠 الرئيسية"}],
+]
+
+OPTIONS_KB = [
     [{"text": "🚀 فتح عقد Call"}, {"text": "🔒 إغلاق عقد"}],
-    [{"text": "📊 نتائج العقود"}, {"text": "💥 وقف خسارة"}],
-    [{"text": "↩️ رجوع"}, {"text": "🏠 الرئيسية"}],
-])
+    [{"text": "🎯 هدف 1"}, {"text": "🎯 هدف 2"}, {"text": "🎯 هدف 3"}],
+    [{"text": "💥 ضرب الوقف"}, {"text": "🧾 تحليل العقود"}],
+    [{"text": "📊 نتائج العقود"}, {"text": "🔔 تنبيهات انتهاء"}],
+    [{"text": "🟢 تعديل المتوسط"}, {"text": "📈 استعلام عن الشارت"}],
+    [{"text": "⬅️ رجوع"}, {"text": "🏠 الرئيسية"}],
+]
 
-TOOLS_KB = kb([
-    [{"text": "🌐 إعداد Webhook"}, {"text": "🧪 اختبار الإرسال للقناة"}],
-    [{"text": "🔗 ربط البوت بالقناة"}, {"text": "🛠️ إصلاح الربط السريع"}],
-    [{"text": "↩️ رجوع"}, {"text": "🏠 الرئيسية"}],
-])
+# ---- simple in-memory state for conversations ----
+STATE: dict[int, dict] = {}
 
-LINK_KB = kb([
-    [{"text": "➕ إضافة قناة"}, {"text": "❌ إزالة قناة"}],
-    [{"text": "🔍 قنواتي الحالية"}, {"text": "🔑 توليد رمز آمن جديد"}],
-    [{"text": "↩️ رجوع"}, {"text": "🏠 الرئيسية"}],
-])
+def reset_state(chat_id: int):
+    STATE.pop(chat_id, None)
 
-BACK_HOME_KB = kb([[{"text": "↩️ رجوع"}, {"text": "🏠 الرئيسية"}]])
+WELCOME = "👑 أهلاً بك في لوحة تحكم المشرف (الإصدار الكامل).
+اختر قسماً للمتابعة:"
 
-# ==== helpers ====
-async def tg_call(method: str, data: dict) -> dict:
-    if not BOT_TOKEN:
-        return {"ok": False, "error": "Missing BOT_TOKEN"}
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.post(f"{API}/{method}", json=data)
-        try:
-            return r.json()
-        except Exception:
-            return {"ok": False, "status_code": r.status_code, "text": r.text}
-
-async def send_text(chat_id: int, text: str, reply_kb: Optional[dict]=None, parse_mode: Optional[str]="HTML"):
-    payload = {"chat_id": chat_id, "text": text}
-    if reply_kb: payload["reply_markup"] = reply_kb
-    if parse_mode: payload["parse_mode"] = parse_mode
-    return await tg_call("sendMessage", payload)
-
-def get_msg(update: dict) -> tuple[Optional[int], str]:
-    msg = update.get("message") or update.get("edited_message") or {}
-    chat = msg.get("chat") or {}
-    return chat.get("id"), (msg.get("text") or "").strip()
-
-def reset_state(user_id: int):
-    USER_STATE.pop(user_id, None)
-
-# ==== Menu handlers ====
-WELCOME = ("👑 أهلاً بك في لوحة تحكم المشرف (الإصدار الكامل).\n"
-           "اختر قسماً للمتابعة:")
-
-async def handle_start(chat_id: int):
-    await send_text(chat_id, WELCOME, MAIN_KB)
-
-async def handle_main_menu(chat_id: int, text: str):
-    if text == "📊 التداول":
-        await send_text(chat_id, "قسم التداول:", TRADE_MAIN_KB)
-    elif text == "🧰 الأدوات المساعدة":
-        await send_text(chat_id, "الأدوات المساعدة:", TOOLS_KB)
-    elif text == "🧠 إدارة النظام":
-        s = ("إدارة النظام:\n"
-             "• إدارة العقود\n• إدارة الشارتات\n• إدارة الاشتراكات\n• إدارة المستخدمين\n• إرسال إعلان")
-        await send_text(chat_id, s, BACK_HOME_KB)
-    elif text == "📈 الإحصاءات والتقارير":
-        await send_text(chat_id, "الإحصاءات والتقارير:", BACK_HOME_KB)
-    elif text == "🎓 التدريب والدورات":
-        await send_text(chat_id, "التدريب والدورات:", BACK_HOME_KB)
-    elif text == "⚙️ القنوات والربط":
-        await send_text(chat_id, "القنوات والربط:", LINK_KB)
-    elif text == "🏠 الرئيسية":
-        await handle_start(chat_id)
-    elif text == "↩️ رجوع":
-        await handle_start(chat_id)
-    else:
-        await send_text(chat_id, "❗ استخدم الأزرار الظاهرة للتحكم في النظام.", MAIN_KB)
-
-async def handle_trade_menu(chat_id: int, text: str, user_id: int):
-    if text == "♦️ الأوبشن":
-        await send_text(chat_id, "الأوبشن - اختر أمراً:", OPTIONS_KB)
-    elif text == "♦️ الأسهم":
-        await send_text(chat_id, "الأسهم — سيتم توسيعها لاحقاً.", BACK_HOME_KB)
-    elif text in ("↩️ رجوع", "🏠 الرئيسية"):
-        reset_state(user_id)
-        await handle_start(chat_id)
-
-async def handle_options(chat_id: int, text: str, user_id: int):
-    if text == "🚀 فتح عقد Call":
-        # نبدأ تجميع البيانات على مراحل: SYMBOL, ENTRY, STOP, TARGETS, NOTES
-        USER_STATE[user_id] = {"flow": "call_open", "step": "symbol"}
-        await send_text(chat_id, "أرسل رمز السهم/العقد (SYMBOL)، مثال: <b>NVDA</b>", BACK_HOME_KB)
-    elif text == "🔒 إغلاق عقد":
-        USER_STATE[user_id] = {"flow": "close_contract", "step": "symbol"}
-        await send_text(chat_id, "إغلاق عقد — أرسل الرمز (SYMBOL).", BACK_HOME_KB)
-    elif text == "💥 وقف خسارة":
-        USER_STATE[user_id] = {"flow": "stop_hit", "step": "symbol"}
-        await send_text(chat_id, "وقف خسارة — أرسل الرمز (SYMBOL).", BACK_HOME_KB)
-    elif text == "📊 نتائج العقود":
-        await send_text(chat_id, "سيتم تجهيز تقارير النتائج لاحقاً.", BACK_HOME_KB)
-    elif text in ("↩️ رجوع", "🏠 الرئيسية"):
-        reset_state(user_id)
-        await handle_start(chat_id)
-
-# ==== Flow machine ====
-async def handle_flow(chat_id: int, user_id: int, text: str):
-    st = USER_STATE.get(user_id)
-    if not st:
-        return False  # لا يوجد تدفق جارٍ
-    flow = st.get("flow")
-    step = st.get("step")
-
-    # ---- فتح عقد Call ----
-    if flow == "call_open":
-        if step == "symbol":
-            st["symbol"] = text.upper().replace(" ", "")
-            st["step"] = "entry"
-            await send_text(chat_id, "أرسل سعر الدخول (ENTRY) مثال: <b>450</b>", BACK_HOME_KB)
-            return True
-        if step == "entry":
-            st["entry"] = text
-            st["step"] = "stop"
-            await send_text(chat_id, "أرسل وقف الخسارة (STOP) مثال: <b>440</b>", BACK_HOME_KB)
-            return True
-        if step == "stop":
-            st["stop"] = text
-            st["step"] = "targets"
-            await send_text(chat_id, "أرسل الأهداف مفصولة بـ <b>|</b> مثال: <b>460 | 470 | 480</b>", BACK_HOME_KB)
-            return True
-        if step == "targets":
-            st["targets"] = [t.strip() for t in text.split("|") if t.strip()]
-            st["step"] = "notes"
-            await send_text(chat_id, "أرسل الملاحظات (اختياري)، أو أرسل <b>-</b> لتجاوز.", BACK_HOME_KB)
-            return True
-        if step == "notes":
-            st["notes"] = None if text.strip() == "-" else text.strip()
-            # إرسال رسالة للقناة
-            if CHANNEL_ID == 0:
-                await send_text(chat_id, "⚠️ لم يتم ضبط CHANNEL_ID في بيئة Render.", BACK_HOME_KB)
-            else:
-                message = (
-                    f"🚀 <b>فتح عقد Call</b>\n"
-                    f"• الرمز: <b>{st['symbol']}</b>\n"
-                    f"• الدخول: <b>{st['entry']}</b>\n"
-                    f"• الوقف: <b>{st['stop']}</b>\n"
-                    f"• الأهداف: <b>{' | '.join(st['targets'])}</b>\n"
-                )
-                if st["notes"]:
-                    message += f"• ملاحظات: <i>{st['notes']}</i>\n"
-                await tg_call("sendMessage", {
-                    "chat_id": CHANNEL_ID,
-                    "text": message,
-                    "parse_mode": "HTML"
-                })
-                await send_text(chat_id, "✅ تم إرسال إشعار فتح عقد Call إلى القناة.", OPTIONS_KB)
-            reset_state(user_id)
-            return True
-
-    # ---- إغلاق عقد ----
-    if flow == "close_contract":
-        if step == "symbol":
-            st["symbol"] = text.upper().replace(" ", "")
-            st["step"] = "result"
-            await send_text(chat_id, "أرسل نتيجة الإغلاق: <b>ربح</b> أو <b>خسارة</b>.", BACK_HOME_KB)
-            return True
-        if step == "result":
-            st["result"] = text.strip()
-            st["step"] = "notes"
-            await send_text(chat_id, "ملاحظات الإغلاق (اختياري) أو <b>-</b> لتجاوز.", BACK_HOME_KB)
-            return True
-        if step == "notes":
-            st["notes"] = None if text.strip() == "-" else text.strip()
-            if CHANNEL_ID != 0:
-                msg = f"🔒 <b>إغلاق عقد</b> • <b>{st['symbol']}</b>\nنتيجة: <b>{st['result']}</b>"
-                if st["notes"]: msg += f"\nملاحظات: <i>{st['notes']}</i>"
-                await tg_call("sendMessage", {"chat_id": CHANNEL_ID, "text": msg, "parse_mode":"HTML"})
-            await send_text(chat_id, "✅ تم إرسال إشعار الإغلاق.", OPTIONS_KB)
-            reset_state(user_id)
-            return True
-
-    # ---- وقف خسارة ----
-    if flow == "stop_hit":
-        if step == "symbol":
-            st["symbol"] = text.upper().replace(" ", "")
-            if CHANNEL_ID != 0:
-                msg = f"⛔️ <b>تم ضرب وقف الخسارة</b> • <b>{st['symbol']}</b>"
-                await tg_call("sendMessage", {"chat_id": CHANNEL_ID, "text": msg, "parse_mode":"HTML"})
-            await send_text(chat_id, "✅ تم إرسال إشعار الوقف.", OPTIONS_KB)
-            reset_state(user_id)
-            return True
-
-    return False
-
-# ==== Webhook ====
+# ------- routing -------
 @app.post("/webhook")
 async def webhook(request: Request):
     update = await request.json()
-    chat_id, text = get_msg(update)
+    chat_id, text = parse_update(update)
     if not chat_id:
         return {"ok": True}
 
-    user_id = chat_id
-
-    # أولاً: فلو (إن وجد)
-    if await handle_flow(chat_id, user_id, text):
+    if not is_admin(chat_id):
+        await tg_send(chat_id, "❌ هذا البوت مخصص للمشرفين فقط.")
         return {"ok": True}
 
-    # ثانياً: قوائم عليا
-    if text == "/start" or text == "🏠 الرئيسية":
-        reset_state(user_id)
-        await handle_start(chat_id)
+    # Conversation states
+    st = STATE.get(chat_id, {})
+
+    # Global buttons
+    if text in ("🏠 الرئيسية", "/start"):
+        reset_state(chat_id)
+        await tg_send(chat_id, WELCOME, keyboard=HOME_KB)
         return {"ok": True}
 
-    # التفرع حسب النص
-    if text in {"📊 التداول", "🧰 الأدوات المساعدة", "🧠 إدارة النظام", "📈 الإحصاءات والتقارير",
-                "🎓 التدريب والدورات", "⚙️ القنوات والربط", "↩️ رجوع", "🏠 الرئيسية"}:
-        await handle_main_menu(chat_id, text)
+    # Back
+    if text == "⬅️ رجوع":
+        reset_state(chat_id)
+        await tg_send(chat_id, "قسم التداول:", keyboard=TRADE_MAIN_KB)
         return {"ok": True}
 
-    if text in {"♦️ الأسهم", "♦️ الأوبشن", "↩️ رجوع"}:
-        await handle_trade_menu(chat_id, text, user_id)
+    # --- Top level sections ---
+    if text == "📊 التداول":
+        await tg_send(chat_id, "قسم التداول:", keyboard=TRADE_MAIN_KB)
         return {"ok": True}
 
-    if text in {"🚀 فتح عقد Call", "🔒 إغلاق عقد", "📊 نتائج العقود", "💥 وقف خسارة"}:
-        await handle_options(chat_id, text, user_id)
+    if text == "🧰 الأدوات المساعدة":
+        await tg_send(chat_id, "الأدوات المساعدة:", keyboard=TOOLS_KB)
         return {"ok": True}
 
-    if text == "🌐 إعداد Webhook":
-        await send_text(chat_id, "استخدم الرابط التالي لضبط الويب هوك:\n"
-                                 f"<code>https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={WEBHOOK_URL}</code>", TOOLS_KB)
+    if text == "⚙️ القنوات والربط":
+        await tg_send(chat_id, "القنوات والربط:", keyboard=LINKS_KB)
         return {"ok": True}
 
-    if text == "🧪 اختبار الإرسال للقناة":
-        if CHANNEL_ID == 0:
-            await send_text(chat_id, "⚠️ CHANNEL_ID غير مضبوط.", TOOLS_KB)
+    if text == "🧠 إدارة النظام":
+        await tg_send(chat_id, "إدارة النظام:", keyboard=[
+            [{"text":"🧳 إدارة العقود"},{"text":"🖼️ إدارة الشارتات"}],
+            [{"text":"💼 إدارة الصفقات"},{"text":"🧾 إدارة الاشتراكات"}],
+            [{"text":"👥 إدارة المستخدمين"},{"text":"📣 إرسال إعلان"}],
+            [{"text":"⬅️ رجوع"},{"text":"🏠 الرئيسية"}]
+        ])
+        return {"ok": True}
+
+    if text == "📈 الإحصاءات والتقارير":
+        await tg_send(chat_id, "الإحصاءات والتقارير:", keyboard=[
+            [{"text":"📊 نسب المتداولين"},{"text":"📅 تقارير الأداء"}],
+            [{"text":"📡 تحليلات السوق"},{"text":"📰 أخبار اقتصادية"}],
+            [{"text":"🏢 أخبار الشركات"},{"text":"🧮 إحصاءات النشاط"}],
+            [{"text":"⬅️ رجوع"},{"text":"🏠 الرئيسية"}]
+        ])
+        return {"ok": True}
+
+    if text == "🎓 التدريب والدورات":
+        await tg_send(chat_id, "التدريب والدورات:", keyboard=[
+            [{"text":"📝 تسجيل المتدربين"},{"text":"🎓 إدارة الدورات"}],
+            [{"text":"🔔 تنبيهات التسجيل"},{"text":"🗄️ لوحة إدارية داخل التليجرام"}],
+            [{"text":"🧾 Google Sheet"},{"text":"🔔 إشعار: تم تسجيل متداول جديد"}],
+            [{"text":"⬅️ رجوع"},{"text":"🏠 الرئيسية"}]
+        ])
+        return {"ok": True}
+
+    # --- Trading sections ---
+    if text == "🔷 الأسهم":
+        await tg_send(chat_id, "الأسهم:", keyboard=STOCKS_KB)
+        return {"ok": True}
+
+    if text == "🔷 الأوبشن":
+        await tg_send(chat_id, "الأوبشن - اختر أمراً:", keyboard=OPTIONS_KB)
+        return {"ok": True}
+
+    # ============ OPTIONS flows ============
+    if text == "🚀 فتح عقد Call":
+        STATE[chat_id] = {"flow":"open_call","step":"ask"}
+        example = ("أرسل تفاصيل العقد بهذا التنسيق:
+"
+                   "<code>SYMBOL | ENTRY | STOP | TARGET1 | TARGET2 | TARGET3 | ملاحظات (اختياري)</code>
+"
+                   "مثال:
+<code>NVDA | 450 | 440 | 460 | 470 | 480 | عقد أسبوعي ينتهي الجمعة</code>")
+        await tg_send(chat_id, example)
+        return {"ok": True}
+
+    st_flow = st.get("flow")
+    if st_flow == "open_call" and st.get("step") == "ask" and text and not text.startswith("/"):
+        # parse line with pipes
+        parts = [p.strip() for p in text.split("|")]
+        if len(parts) < 6:
+            await tg_send(chat_id, "⚠️ صيغة غير صحيحة. أرسل 6 قيم على الأقل: SYMBOL | ENTRY | STOP | TARGET1 | TARGET2 | TARGET3 | [NOTES]")
+            return {"ok": True}
+        symbol, entry, stop, t1, t2, t3, *rest = parts
+        notes = rest[0] if rest else ""
+        st.update({
+            "symbol":symbol, "entry":entry, "stop":stop,
+            "t1":t1, "t2":t2, "t3":t3, "notes":notes, "step":"confirm"
+        })
+        STATE[chat_id] = st
+        preview = (f"سيتم نشر التنبيه التالي للقناة:
+"
+                   f"<b>فتح عقد Call 🚀</b>\n"
+                   f"• <b>الرمز:</b> {symbol}\n"
+                   f"• <b>الدخول:</b> {entry}\n"
+                   f"• <b>الوقف:</b> {stop}\n"
+                   f"• <b>الأهداف:</b> {t1} | {t2} | {t3}\n"
+                   f"• <b>ملاحظات:</b> {notes or '-'}\n\n"
+                   "أرسل <code>نشر</code> للتأكيد أو <code>إلغاء</code>.")
+        await tg_send(chat_id, preview)
+        return {"ok": True}
+
+    if st_flow == "open_call" and st.get("step") == "confirm":
+        if text == "نشر":
+            m = (f"فتح عقد Call 🚀\n"
+                 f"• الرمز: <b>{st['symbol']}</b>\n"
+                 f"• الدخول: <b>{st['entry']}</b>\n"
+                 f"• الوقف: <b>{st['stop']}</b>\n"
+                 f"• الأهداف: <b>{st['t1']} | {st['t2']} | {st['t3']}</b>\n"
+                 f"• الملاحظات: {st['notes'] or '-'}")
+            res = await tg_send_channel(m)
+            reset_state(chat_id)
+            await tg_send(chat_id, "✅ تم النشر للقناة.", keyboard=OPTIONS_KB)
+            return {"ok": True}
+        elif text == "إلغاء":
+            reset_state(chat_id)
+            await tg_send(chat_id, "تم الإلغاء.", keyboard=OPTIONS_KB)
+            return {"ok": True}
         else:
-            await tg_call("sendMessage", {"chat_id": CHANNEL_ID, "text": "🔔 اختبار الإرسال من لوحة المشرف."})
-            await send_text(chat_id, "✅ تم إرسال رسالة اختبار إلى القناة.", TOOLS_KB)
+            await tg_send(chat_id, "أرسل <code>نشر</code> للتأكيد أو <code>إلغاء</code>.")
+            return {"ok": True}
+
+    # Quick actions
+    if text in ("🎯 هدف 1","🎯 هدف 2","🎯 هدف 3","💥 ضرب الوقف","🔒 إغلاق عقد"):
+        kind = "target1" if text=="🎯 هدف 1" else "target2" if text=="🎯 هدف 2" else "target3" if text=="🎯 هدف 3" else "stop" if text=="💥 ضرب الوقف" else "close"
+        await tg_send(chat_id, f"✍️ أرسل <code>SYMBOL | السعر</code> لهذا الأمر ({text}).\nمثال: <code>NVDA | 465</code>")
+        STATE[chat_id] = {"flow":"quick", "event":kind}
+        return {"ok": True}
+
+    if st.get("flow")=="quick" and text and "|" in text:
+        sym, price = [p.strip() for p in text.split("|",1)]
+        label = {"target1":"🎯 تحقق هدف 1","target2":"🎯 تحقق هدف 2","target3":"🎯 تحقق هدف 3","stop":"💥 تم ضرب الوقف","close":"🔒 تم إغلاق العقد"}[st["event"]]
+        msg = f"{label}\n• الرمز: <b>{sym}</b>\n• السعر: <b>{price}</b>"
+        await tg_send_channel(msg)
+        reset_state(chat_id)
+        await tg_send(chat_id, "✅ تم الإرسال.", keyboard=OPTIONS_KB)
+        return {"ok": True}
+
+    # Tools actions
+    if text == "🧪 اختبار الإرسال للقناة":
+        res = await tg_send_channel("🔔 اختبار إرسال من لوحة المشرف.")
+        await tg_send(chat_id, f"نتيجة الاختبار: <code>{res}</code>")
         return {"ok": True}
 
     if text == "🔗 ربط البوت بالقناة":
-        await send_text(chat_id, "أرسل الآن <b>CHANNEL_ID</b> مثل: <code>-1001234567890</code>", TOOLS_KB)
-        # ملاحظة: لا يمكن تغيير متغيرات Render أثناء التشغيل؛ سنستخدمه للتأكيد فقط.
+        await tg_send(chat_id, "أرسل الآن <code>CHANNEL_ID</code> بصيغة عددية مثل: <code>-1001234567890</code>")
+        STATE[chat_id] = {"flow":"bind_channel"}
         return {"ok": True}
 
-    await send_text(chat_id, "❗ استخدم الأوامر الظاهرة للتحكم في النظام.", MAIN_KB)
+    if st.get("flow") == "bind_channel" and text and (text.startswith("-100") or text.lstrip("-").isdigit()):
+        os.environ["CHANNEL_ID"] = text
+        global CHANNEL_ID
+        CHANNEL_ID = text
+        reset_state(chat_id)
+        await tg_send(chat_id, f"✅ تم ضبط القناة: <code>{CHANNEL_ID}</code>", keyboard=LINKS_KB)
+        return {"ok": True}
+
+    # default
+    await tg_send(chat_id, "❗ استخدم الأوامر أو الأزرار للتفاعل مع النظام.", keyboard=HOME_KB)
     return {"ok": True}
 
-# ===== TradingView webhook =====
-# أدخلي هذا الرابط في TradingView (Webhook URL):
-#   https://YOUR-APP.onrender.com/tv
-# ثم اجعلي "Message" من TradingView JSON مثل:
-#   {"secret":"mysecret","text":"🚀 NVDA Call 450/460/470","channel_id":-1003267033079}
-@app.post("/tv")
-async def tv_endpoint(request: Request):
+# ------- TradingView webhook -------
+@app.post("/tv_hook")
+async def tv_hook(request: Request):
+    # Accepts JSON from TradingView alerts.
     try:
         data = await request.json()
     except Exception:
-        body = await request.body()
-        try:
-            data = json.loads(body.decode("utf-8"))
-        except Exception:
-            return {"ok": False, "error": "Bad JSON"}
+        raise HTTPException(400, "Invalid JSON")
 
-    if data.get("secret") != TV_SECRET:
-        return {"ok": False, "error": "Unauthorized"}
+    secret = str(data.get("secret","")).strip() or str(request.query_params.get("secret","")).strip()
+    if TV_SECRET and secret != TV_SECRET:
+        raise HTTPException(403, "Forbidden")
 
-    text = data.get("text") or ""
-    ch  = int(data.get("channel_id") or CHANNEL_ID or 0)
+    # Expected payload example:
+    # { "type":"open_call", "symbol":"NVDA", "entry":450, "stop":440, "targets":[460,470,480], "note":"نص اختياري" }
+    t = (data.get("type") or "").lower()
+    symbol = data.get("symbol","").upper()
+    note   = data.get("note","") or "-"
 
-    if not text or ch == 0:
-        return {"ok": False, "error": "Missing text or channel_id"}
+    if t == "open_call":
+        entry = data.get("entry","-")
+        stop  = data.get("stop","-")
+        targets = data.get("targets") or []
+        t1 = targets[0] if len(targets)>0 else "-"
+        t2 = targets[1] if len(targets)>1 else "-"
+        t3 = targets[2] if len(targets)>2 else "-"
+        msg = (f"فتح عقد Call 🚀\n"
+               f"• الرمز: <b>{symbol}</b>\n"
+               f"• الدخول: <b>{entry}</b>\n"
+               f"• الوقف: <b>{stop}</b>\n"
+               f"• الأهداف: <b>{t1} | {t2} | {t3}</b>\n"
+               f"• الملاحظات: {note}")
+        res = await tg_send_channel(msg)
+        return {"ok": True, "sent": res}
 
-    await tg_call("sendMessage", {"chat_id": ch, "text": text, "parse_mode": "HTML"})
-    return {"ok": True}
+    elif t in ("target1","target2","target3","stop","close"):
+        price = data.get("price","-")
+        label = {"target1":"🎯 تحقق هدف 1","target2":"🎯 تحقق هدف 2","target3":"🎯 تحقق هدف 3","stop":"💥 تم ضرب الوقف","close":"🔒 تم إغلاق العقد"}[t]
+        msg = f"{label}\n• الرمز: <b>{symbol}</b>\n• السعر: <b>{price}</b>\n• ملاحظات: {note}"
+        res = await tg_send_channel(msg)
+        return {"ok": True, "sent": res}
 
-# ===== Convenience =====
+    else:
+        return {"ok": False, "error":"Unknown type"}
+
+# ------- convenience -------
 @app.get("/")
 def root():
-    return {"status": "running", "role": "admin"}
+    return {"status":"running","role":"admin"}
 
 @app.get("/set_webhook")
 async def set_webhook():
     if not (BOT_TOKEN and WEBHOOK_URL):
         return {"ok": False, "error": "Missing BOT_TOKEN or WEBHOOK_URL"}
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(f"{API}/setWebhook", params={"url": WEBHOOK_URL})
         return r.json()
 
@@ -335,10 +359,11 @@ async def set_webhook():
 async def delete_webhook():
     if not BOT_TOKEN:
         return {"ok": False, "error": "Missing BOT_TOKEN"}
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(f"{API}/deleteWebhook")
         return r.json()
 
+# Local run
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 10000))
