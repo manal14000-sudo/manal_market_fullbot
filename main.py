@@ -1,20 +1,38 @@
-from fastapi import FastAPI, Request
-import requests
+from fastapi import FastAPI, Request, BackgroundTasks
 import os
+import httpx
 
 app = FastAPI()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_ROLE = os.getenv("BOT_ROLE", "user")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-@app.post("/webhook")
-async def webhook(request: Request):
-    data = await request.json()
-    chat_id = data["message"]["chat"]["id"]
-    text = data["message"].get("text", "").strip()
+def tg_send_message(chat_id: int, text: str):
+    """إرسال رسالة لتليجرام بخلفية سريعة مع مهلة صغيرة"""
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.post(f"{TELEGRAM_API_URL}/sendMessage",
+                        json={"chat_id": chat_id, "text": text})
+    except Exception:
+        # لا نُسقط الوِبهوك لو فشل الإرسال
+        pass
 
+@app.post("/webhook")
+async def webhook(request: Request, bg: BackgroundTasks):
+    data = await request.json()
+
+    # حماية من التحديثات غير النصية
+    message = data.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    text = (message.get("text") or "").strip()
+
+    # إن لم يوجد نص أو chat_id نرجع OK فورًا
+    if not chat_id or not isinstance(text, str):
+        return {"ok": True}
+
+    # منطق الردود
     if BOT_ROLE == "user":
         if text == "/start":
             msg = "👋 مرحباً بك في نظام التداول منال ماركت!"
@@ -28,7 +46,6 @@ async def webhook(request: Request):
             msg = "⚙️ يمكنك تعديل إعداداتك هنا."
         else:
             msg = "❗ استخدم الأوامر المتاحة للتفاعل مع النظام."
-    
     elif BOT_ROLE == "admin":
         if text == "/start":
             msg = "👑 لوحة التحكم لمشرف منال."
@@ -41,7 +58,8 @@ async def webhook(request: Request):
     else:
         msg = "❗ تم التعرف على رسالة غير متوقعة."
 
-    requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={"chat_id": chat_id, "text": msg})
+    # أضف مهمة الإرسال للخلفية وأرجع فورًا 200
+    bg.add_task(tg_send_message, chat_id, msg)
     return {"ok": True}
 
 @app.get("/")
