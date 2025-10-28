@@ -1,1 +1,3 @@
-web: uvicorn admin_main:app --host 0.0.0.0 --port 10000
+web: python -m services.tv_webhook
+admin: python -m admin_bot.main_admin_bot
+trader: python -m trader_bot.main_trader_bot
