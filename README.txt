@@ -1,0 +1,1 @@
+Golden Academy minimal structure.

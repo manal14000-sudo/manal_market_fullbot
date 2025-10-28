@@ -1,5 +1,6 @@
-fastapi
-uvicorn
-requests
-httpx
-python-telegram-bot==20.8
+aiogram==2.25.2
+APScheduler==3.10.4
+Flask==3.0.3
+python-dotenv==1.0.1
+PyYAML==6.0.2
+pytz==2024.1
