@@ -1,4 +1,4 @@
-import os, asyncio, uuid
+    import os, asyncio, uuid
     from aiogram import Bot, Dispatcher, types
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from dotenv import load_dotenv
