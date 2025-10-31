@@ -1,39 +1,39 @@
-# -*- coding: utf-8 -*-
-# main.py — يشغّل بوت المشرف + بوت المتداول + خادم Webhook لتحديثات TradingView
-# يعتمد على الملفات داخل المجلدات: admin_bot/ , trader_bot/ , services/ , config/
-
+# coding: utf-8
 import os
-import asyncio
 import logging
-from dotenv import load_dotenv
+from threading import Thread
 
-# تحميل .env
-load_dotenv()
+import uvicorn
 
-# إعداد اللوجز
+# تأكد من إتاحة استيراد الحِزم المحلية
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
+from admin_bot.main_admin_bot import run_admin_bot
+from trader_bot.main_trader_bot import run_trader_bot
+from services.tv_webhook import app  # FastAPI app
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 
-# التأكد من المسارات
-import sys
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+def start_admin():
+    # يبدأ حلقة الحدث الخاصة به داخليًا (executor.start_polling)
+    run_admin_bot()
 
-async def run_all():
-    from admin_bot.main_admin_bot import run_admin_bot
-    from trader_bot.main_trader_bot import run_trader_bot
-    from services.tv_webhook import run_webhook_app
+def start_trader():
+    # يبدأ حلقة الحدث الخاصة به داخليًا (executor.start_polling)
+    run_trader_bot()
 
-    # تشغيل البوتين + الويبهوك بالتوازي
-    await asyncio.gather(
-        run_admin_bot(),
-        run_trader_bot(),
-        run_webhook_app()
-    )
+def main():
+    # تشغيل البوتين في خيوط منفصلة
+    Thread(target=start_admin, daemon=True).start()
+    Thread(target=start_trader, daemon=True).start()
+
+    # تشغيل FastAPI لاستقبال Webhook من TradingView
+    port = int(os.environ.get("PORT", "10000"))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_all())
-    except (KeyboardInterrupt, SystemExit):
-        print("Shutting down...")
+    main()
