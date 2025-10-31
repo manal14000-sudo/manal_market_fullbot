@@ -7,7 +7,7 @@ from admin_bot.handlers import register
 
 logging.basicConfig(level=logging.INFO)
 
-def main():
+def run_admin_bot():
     s = get_settings()
     bot = Bot(token=s.ADMIN_BOT_TOKEN, parse_mode="HTML")
     dp = Dispatcher(bot)
