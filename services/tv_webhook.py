@@ -5,7 +5,9 @@ from config.settings import get_settings
 import uvicorn
 
 app = FastAPI()
-
+@app.get("/")
+async def root():
+    return {"message": "Manal Market Bot is running successfully!"}
 @app.post("/webhook")
 async def webhook(req: Request):
     s = get_settings()
