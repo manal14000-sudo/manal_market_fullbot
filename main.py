@@ -29,5 +29,5 @@ def main():
     # شغّل سيرفر FastAPI (Webhook) على نفس البروسس مع asyncio
     asyncio.run(run_webhook_app())
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
