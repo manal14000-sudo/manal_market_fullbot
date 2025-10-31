@@ -34,5 +34,5 @@ def main():
     port = int(os.getenv("PORT", "10000"))  # Render يمرّر PORT
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
