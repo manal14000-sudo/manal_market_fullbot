@@ -1,38 +1,49 @@
-# -- coding: utf-8 --
+# coding: utf-8
 import os
-import logging
+import asyncio
 from threading import Thread
-
-# شغّل لوجينج بسيط
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-
-# استيراد دوال تشغيل البوتين (كل دالة بداخلها executor.start_polling)
+from fastapi import FastAPI, Request, HTTPException
+from config.settings import get_settings
+from services.tv_webhook import run_webhook_app
 from admin_bot.main_admin_bot import run_admin_bot
 from trader_bot.main_trader_bot import run_trader_bot
+import uvicorn
 
-# استيراد FastAPI app المعرّف في services/tv_webhook.py
-from services.tv_webhook import app
+app = FastAPI()
 
+@app.get("/")
+async def root():
+    return {"message": "Manal Market Bot is running successfully!"}
+
+
+@app.post("/webhook")
+async def webhook(req: Request):
+    s = get_settings()
+    data = await req.json()
+    if data.get("secret") != s.TV_WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret")
+    # هنا يمكنك لاحقًا توجيه الرسالة للبوتات
+    return {"ok": True}
+
+
+# ✅ تفعيل event loop لكل thread
 def start_admin():
-    """تشغيل بوت المشرف في ثريد مستقل"""
+    asyncio.set_event_loop(asyncio.new_event_loop())
     run_admin_bot()
 
+
 def start_trader():
-    """تشغيل بوت المتداول في ثريد مستقل"""
+    asyncio.set_event_loop(asyncio.new_event_loop())
     run_trader_bot()
 
+
 def main():
-    # تشغيل البوتين على خيوط (Threads) منفصلة
-    Thread(target=start_admin,  daemon=True).start()
+    # تشغيل البوتين في خيوط منفصلة
+    Thread(target=start_admin, daemon=True).start()
     Thread(target=start_trader, daemon=True).start()
+    # تشغيل FastAPI مع asyncio loop
+    asyncio.run(run_webhook_app())
 
-    # تشغيل خادم FastAPI عبر uvicorn (نفس العملية)
-    import uvicorn
-    port = int(os.getenv("PORT", "10000"))  # Render يمرّر PORT
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
