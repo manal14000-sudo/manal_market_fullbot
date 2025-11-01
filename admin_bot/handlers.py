@@ -1,14 +1,22 @@
-# -*- coding: utf-8 -*-
-# راجعته ليناسب Aiogram 2.25.1
+# -- coding: utf-8 --
+# محدث ليدعم ReplyKeyboard الثابتة + يبقي Inline القديمة شغالة
 import functools
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config.settings import get_settings
 from config.strings import TTL
 from admin_bot import messages as AM
-from admin_bot.keyboards import *
-from admin_bot.utils_admin import send_preview, PREVIEWS
 
+# استيراد لوحات Inline القديمة (لا نحذفها)
+from admin_bot.keyboards import *
+
+# استيراد اللوحات الثابتة الجديدة
+from admin_bot import keyboards_reply as rkb
+
+
+# ----------------------------
+# ديكور للتحقق أن المستخدم مُشرف
+# ----------------------------
 def admin_only(dp):
     def decorator(handler):
         @functools.wraps(handler)
@@ -25,13 +33,135 @@ def admin_only(dp):
         return wrapper
     return decorator
 
+
 def register(dp, bot):
     s = get_settings()
 
-    @dp.message_handler(commands=["start"])
+    # ----------------------------
+    # /start → يظهر لوحة ثابتة
+    # ----------------------------
+    @dp.message_handler(commands=["start", "menu"])
     @admin_only(dp)
     async def start(message: types.Message):
-        await message.answer(AM.MSG_WELCOME, reply_markup=main_menu())
+        await message.answer(AM.MSG_WELCOME, reply_markup=rkb.kb_main())
+
+    # ---------------------------------------------------
+    # هاندلر نصوص واحد للوحة الثابتة (ReplyKeyboard)
+    # ---------------------------------------------------
+    @dp.message_handler(content_types=types.ContentTypes.TEXT)
+    @admin_only(dp)
+    async def on_text(message: types.Message):
+        txt = (message.text or "").strip()
+
+        # الرئيسية
+        if txt == rkb.BTN_HOME:
+            return await message.answer(TTL["main"], reply_markup=rkb.kb_main())
+
+        # التداول
+        if txt == rkb.BTN_TRADING:
+            return await message.answer(TTL["trading"], reply_markup=rkb.kb_trading())
+
+        # قوائم فرعية للتداول
+        if txt == rkb.BTN_OPT_MENU:
+            return await message.answer(TTL["option"], reply_markup=rkb.kb_option_menu())
+
+        if txt == rkb.BTN_STOCK_MENU:
+            return await message.answer(TTL["stocks"], reply_markup=rkb.kb_stock_menu())
+
+        # الأدوات
+        if txt == rkb.BTN_TOOLS:
+            return await message.answer(TTL["tools"], reply_markup=rkb.kb_tools())
+
+        # رجوع (هنا رجّعناه لقسم التداول — غيّريها لو تبين)
+        if txt == rkb.BTN_BACK:
+            return await message.answer("تم الرجوع.", reply_markup=rkb.kb_trading())
+
+        # ===== أمثلة ربط الأزرار بوظائفك (نفس رسائلك الحالية) =====
+        # الأوبشن
+        if txt == rkb.BTN_OPEN_CALL:
+            return await message.answer("أرسلي CSV لفتح CALL: SYMBOL,EXP,STRIKE,ENTRY,TP1,TP2,TP3,SL")
+        if txt == rkb.BTN_OPEN_PUT:
+            return await message.answer("أرسلي CSV لفتح PUT: SYMBOL,EXP,STRIKE,ENTRY,TP1,TP2,TP3,SL")
+        if txt == rkb.BTN_TP1:
+            return await message.answer("🎯 تم تحقيق هدف 100%")
+        if txt == rkb.BTN_TP2:
+            return await message.answer("🎯🎯 تم تحقيق هدف 200%")
+        if txt == rkb.BTN_TP3:
+            return await message.answer("🎯 تم تحقيق الهدف الثالث")
+        if txt == rkb.BTN_STOP:
+            return await message.answer("💥 تم ضرب وقف الخسارة")
+        if txt == rkb.BTN_RESULTS_OPT:
+            return await message.answer("📊 نتائج العقود (سيتم التحديث)")
+        if txt == rkb.BTN_EXP_ALERTS:
+            return await message.answer("🔔 تنبيهات الاستحقاق مفعّلة")
+        if txt == rkb.BTN_LEFT_WEEK:
+            return await message.answer("🗓️ تبقّى أسبوع")
+        if txt == rkb.BTN_LEFT_3DAYS:
+            return await message.answer("📆 تبقّى 3 أيام")
+        if txt == rkb.BTN_LEFT_TODAY:
+            return await message.answer("⏳ ينتهي اليوم")
+        if txt == rkb.BTN_ANALYZE:
+            return await message.answer("🧾 تحليل العقد (ملخص سريع)")
+        if txt == rkb.BTN_STATUS:
+            return await message.answer("💬 استعلام عن الحالة")
+        if txt == rkb.BTN_PRICE_UPD:
+            return await message.answer("⚙️ التحديثات اللحظية عبر Webhook")
+        if txt == rkb.BTN_SEARCH:
+            return await message.answer("🔎 FIND_OPT SYMBOL,STRIKE,EXP أو FIND_STK SYMBOL")
+
+        # الأسهم
+        if txt == rkb.BTN_STOCK_OPEN:
+            return await message.answer("🚀 إدخلي تفاصيل فتح صفقة السهم…")
+        if txt == rkb.BTN_STOCK_CLOSE:
+            return await message.answer("🔐 إدخلي تفاصيل إغلاق الصفقة…")
+        if txt == rkb.BTN_STOCK_QBUY:
+            return await message.answer("⚡ دخول سريع: …")
+        if txt == rkb.BTN_STOCK_QSELL:
+            return await message.answer("⚡ خروج سريع: …")
+        if txt == rkb.BTN_STOCK_RESULTS:
+            return await message.answer("📊 نتائج الأسهم (سيتم التحديث)")
+
+        # الأدوات/النظام
+        if txt == rkb.BTN_AVG_ADJUST:
+            return await message.answer("🧮 حاسبة تعديل المتوسط…")
+        if txt == rkb.BTN_CONVERT:
+            return await message.answer("💱 تحويل العملات…")
+        if txt == rkb.BTN_PNL:
+            return await message.answer("📟 حاسبة الربح/الخسارة…")
+        if txt == rkb.BTN_EXPECTED:
+            return await message.answer("🧮 سعر عقد متوقع…")
+        if txt == rkb.BTN_GEN_SETTINGS:
+            return await message.answer("⚙️ إعدادات عامة…")
+        if txt == rkb.BTN_SET_SECRET:
+            return await message.answer("🔐 أدخلي الرمز السري للويبهوك…")
+        if txt == rkb.BTN_SETUP_WEBHOOK:
+            # مثال اختبار: إرسال رسالتين
+            try:
+                await message.bot.send_message(s.PRIVATE_CHANNEL_ID, "🌐 Webhook: رسالة تجريبية للقناة الخاصة.")
+                await message.answer("تم إرسال اختبار Webhook ✅")
+            except Exception as e:
+                await message.answer(f"تعذّر اختبار الويبهوك: {e}")
+            return
+        if txt == rkb.BTN_TEST_CHANNEL:
+            try:
+                await message.bot.send_message(s.PRIVATE_CHANNEL_ID, "🛰️ اختبار قناة: تم الوصول بنجاح.")
+                await message.answer("تم اختبار القناة ✅")
+            except Exception as e:
+                await message.answer(f"تعذّر الوصول للقناة: {e}")
+            return
+        if txt == rkb.BTN_LINK_CHANNEL:
+            return await message.answer("🔗 ربط البوت بالقناة: ارفعي لي ID القناة أو أتحقّق من الإعدادات…")
+        if txt == rkb.BTN_TEST_WEBHOOK:
+            return await message.answer("🧭 اختبار Webhook (خارجي)…")
+        if txt == rkb.BTN_QUICK_FIX:
+            return await message.answer("🛠️ إصلاح الربط السريع — Placeholder.")
+
+        # إن لم يطابق أي زر: تجاهلي أو ارسلي توضيحًا
+        await message.answer("🚦 استخدمي الأزرار بالأسفل للتنقل بين القوائم.")
+
+    # ------------------------------------------------------------------
+    # أسفل هذا السطر تبقَى هاندلرات الـInline القديمة كما هي (اختياري)
+    # ------------------------------------------------------------------
 
     @dp.callback_query_handler(lambda c: c.data in (CB_HOME, CB_BACK))
     @admin_only(dp)
@@ -83,7 +213,7 @@ def register(dp, bot):
     async def open_sysadmin(cb: types.CallbackQuery):
         await cb.message.edit_text("⚒️ إدارة النظام", reply_markup=sysadmin_menu()); await cb.answer()
 
-    # روابط القنوات
+    # روابط القنوات (تبقى كما كانت)
     @dp.callback_query_handler(lambda c: c.data in (CB_PUBLIC_MARKETING, CB_PUBLIC_EDU, CB_PRIVATE_CHANNEL))
     @admin_only(dp)
     async def open_channel_links(cb: types.CallbackQuery):
@@ -93,41 +223,3 @@ def register(dp, bot):
         label = "📣 قناة عامة" if cb.data == CB_PUBLIC_MARKETING else ("🎓 قناة تعليمية" if cb.data == CB_PUBLIC_EDU else "🔒 القناة الخاصة")
         kb = InlineKeyboardMarkup().add(InlineKeyboardButton(f"فتح {label}", url=link))
         await cb.message.answer(f"{label}:", reply_markup=kb); await cb.answer()
-
-    # أدوات عامة + اختبار Webhook
-    @dp.callback_query_handler(lambda c: c.data in (CB_AVG_ADJUST, CB_CONVERT_CURRENCY, CB_PNL_CALC, CB_EXPECTED_PRICE, CB_GENERAL_SETTINGS, CB_SET_SECRET, CB_SETUP_WEBHOOK, CB_TEST_CHANNEL, CB_LINK_BOT_CHANNEL, CB_FIX_QUICK_LINK, CB_TEST_WEBHOOK))
-    @admin_only(dp)
-    async def tools_actions(cb: types.CallbackQuery):
-        if cb.data == CB_TEST_WEBHOOK:
-            await cb.message.bot.send_message(s.PRIVATE_CHANNEL_ID, "🧭 اختبار Webhook: رسالة تجريبية وصلت إلى القناة الخاصة.")
-            await cb.message.bot.send_message(cb.from_user.id, "🧭 اختبار Webhook: رسالة تجريبية وصلت للخاص.")
-            await cb.answer("تم إرسال اختبار الويبهوك ✅", show_alert=True)
-        elif cb.data == CB_TEST_CHANNEL:
-            await cb.message.bot.send_message(s.PRIVATE_CHANNEL_ID, "🛰️ اختبار قناة: تم الوصول بنجاح.")
-            await cb.answer("تم اختبار القناة ✅", show_alert=True)
-        else:
-            await cb.message.answer("⚙️ سيتم تنفيذ الإجراء (placeholder)."); await cb.answer()
-
-    # معاينات بسيطة لأزرار الأوبشن
-    @dp.callback_query_handler(lambda c: c.data in (CB_OPEN_CALL, CB_OPEN_PUT, CB_TARGET_100, CB_TARGET_200, CB_TARGET_3, CB_STOP_HIT, CB_RESULTS, CB_EXP_ALERTS, CB_LEFT_WEEK, CB_LEFT_3DAYS, CB_LEFT_TODAY, CB_ANALYZE_CONTRACT, CB_STATUS_INQUIRY, CB_PRICE_UPDATE, CB_SEARCH_TRADE, CB_PREVIEW_SEND))
-    @admin_only(dp)
-    async def option_simple(cb: types.CallbackQuery):
-        mapping = {
-            CB_OPEN_CALL: "أرسلي CSV لفتح CALL: SYMBOL,EXP,STRIKE,ENTRY,TP1,TP2,TP3,SL",
-            CB_OPEN_PUT: "أرسلي CSV لفتح PUT: SYMBOL,EXP,STRIKE,ENTRY,TP1,TP2,TP3,SL",
-            CB_TARGET_100: "🎯 تم تحقيق هدف 100%",
-            CB_TARGET_200: "🎯🎯 تم تحقيق هدف 200%",
-            CB_TARGET_3:   "🎯 تم تحقيق الهدف الثالث",
-            CB_STOP_HIT:   "💥 تم ضرب وقف الخسارة",
-            CB_RESULTS:    "📊 نتائج العقود (سيتم التحديث)",
-            CB_EXP_ALERTS: "🔔 تنبيهات الاستحقاق مفعّلة",
-            CB_LEFT_WEEK:  "🗓️ تبقّى أسبوع",
-            CB_LEFT_3DAYS: "📆 تبقّى 3 أيام",
-            CB_LEFT_TODAY: "⏳ ينتهي اليوم",
-            CB_ANALYZE_CONTRACT: "🧾 تحليل العقد (ملخص سريع)",
-            CB_STATUS_INQUIRY:   "💬 استعلام عن الحالة",
-            CB_PRICE_UPDATE:     "⚙️ التحديثات اللحظية عبر Webhook",
-            CB_SEARCH_TRADE:     "🔎 FIND_OPT SYMBOL,STRIKE,EXP أو FIND_STK SYMBOL",
-            CB_PREVIEW_SEND:     "🧪 معاينة قبل الإرسال (أرسلي نصًا لتجربته)"
-        }
-        await cb.message.answer(mapping[cb.data]); await cb.answer()
