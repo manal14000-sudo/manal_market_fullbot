@@ -27,10 +27,11 @@ async def webhook(req: Request):
 
 
 # ✅ تفعيل event loop لكل thread
+import asyncio
+
 def start_admin():
     asyncio.set_event_loop(asyncio.new_event_loop())
     run_admin_bot()
-
 
 def start_trader():
     asyncio.set_event_loop(asyncio.new_event_loop())
