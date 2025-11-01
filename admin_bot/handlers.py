@@ -15,7 +15,7 @@ from admin_bot.keyboards import *
 # لوحات ReplyKeyboard الثابتة الجديدة
 from admin_bot import keyboards_reply as rkb
 
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 # ----------------------------
 # ديكور للتحقق أن المستخدم مُشرف
