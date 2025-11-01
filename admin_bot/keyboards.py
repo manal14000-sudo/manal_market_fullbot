@@ -1,187 +1,120 @@
-# -*- coding: utf-8 -*-
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+# -- coding: utf-8 --
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-CB_TRADING            = "trading_menu"
-CB_TOOLS              = "tools_menu"
-CB_ANALYTICS          = "analytics_menu"
-CB_CHANNELS           = "channels_menu"
-CB_REPORTS            = "reports_menu"
-CB_ADS                = "ads_menu"
-CB_SYSADMIN           = "sysadmin_menu"
+# === تسميات الأزرار (حتى لو غيرتِها لاحقًا يبقى مكان واحد) ===
+BTN_HOME          = "🏠 الرئيسية"
+BTN_BACK          = "↩️ رجوع"
 
-CB_OPEN_OPTION_MENU   = "open_option_menu"
-CB_OPEN_STOCK_MENU    = "open_stock_menu"
+# الرئيسية
+BTN_TRADING       = "📊 التداول"
+BTN_TOOLS         = "🧰 الأدوات"
+BTN_ANALYTICS     = "🧠 التحليلات"
+BTN_CHANNELS      = "🛰️ القنوات والربط"
+BTN_ADS           = "📰 الإعلانات"
+BTN_REPORTS       = "📈 التقارير"
+BTN_SYSADMIN      = "⚒️ إدارة النظام"
 
-CB_OPEN_CALL          = "open_call"
-CB_OPEN_PUT           = "open_put"
-CB_CLOSE_OPTION       = "close_option"
-CB_TARGET_100         = "target_100"
-CB_TARGET_200         = "target_200"
-CB_TARGET_3           = "target_3"
-CB_STOP_HIT           = "stop_hit"
-CB_RESULTS            = "opt_results"
-CB_EXP_ALERTS         = "expiry_alerts"
-CB_LEFT_WEEK          = "left_week"
-CB_LEFT_3DAYS         = "left_3days"
-CB_LEFT_TODAY         = "left_today"
-CB_ANALYZE_CONTRACT   = "analyze_contract"
-CB_STATUS_INQUIRY     = "status_inquiry"
-CB_PRICE_UPDATE       = "price_update"
-CB_SEARCH_TRADE       = "search_trade"
-CB_PREVIEW_SEND       = "preview_before_send"
+# التداول
+BTN_OPT_MENU      = "💎 الأوبشن"
+BTN_STOCK_MENU    = "📈 الأسهم"
 
-CB_OPEN_STOCK         = "open_stock"
-CB_CLOSE_STOCK        = "close_stock"
-CB_QUICK_BUY          = "quick_buy"
-CB_QUICK_SELL         = "quick_sell"
-CB_STOCK_RESULTS      = "stock_results"
+# الأوبشن (قائمة مختصرة – يمكنك الإضافة/الحذف)
+BTN_OPEN_CALL     = "🚀 فتح عقد Call"
+BTN_OPEN_PUT      = "📉 فتح عقد Put"
+BTN_CLOSE_OPT     = "🔐 إغلاق عقد"
+BTN_PREVIEW       = "🧪 معاينة قبل الإرسال"
+BTN_TP1           = "🎯 تحقق 100%"
+BTN_TP2           = "🎯🎯 تحقق 200%"
+BTN_TP3           = "🎯 الهدف الثالث"
+BTN_STOP          = "💥 تم ضرب وقف"
+BTN_RESULTS_OPT   = "📊 نتائج العقود"
+BTN_EXP_ALERTS    = "🔔 تنبيهات الاستحقاق"
+BTN_LEFT_WEEK     = "🗓️ تبقّى أسبوع"
+BTN_LEFT_3DAYS    = "📆 تبقّى 3 أيام"
+BTN_LEFT_TODAY    = "⏳ ينتهي اليوم"
+BTN_ANALYZE       = "🧾 تحليل العقد"
+BTN_STATUS        = "💬 استعلام حالة"
+BTN_PRICE_UPD     = "⚙️ تحديثات سعرية"
+BTN_SEARCH        = "🔎 بحث"
 
-CB_AVG_ADJUST         = "avg_adjust_calc"
-CB_CONVERT_CURRENCY   = "currency_convert"
-CB_PNL_CALC           = "pnl_calc"
-CB_EXPECTED_PRICE     = "expected_price_calc"
-CB_GENERAL_SETTINGS   = "general_settings"
-CB_SET_SECRET         = "set_tv_secret"
-CB_SETUP_WEBHOOK      = "setup_webhook"
-CB_TEST_CHANNEL       = "test_channel"
-CB_LINK_BOT_CHANNEL   = "link_bot_to_channel"
-CB_FIX_QUICK_LINK     = "fix_quick_link"
-CB_TEST_WEBHOOK       = "test_webhook"
+# الأسهم
+BTN_STOCK_OPEN    = "🟩 فتح صفقة سهم"
+BTN_STOCK_CLOSE   = "🟥 إغلاق صفقة سهم"
+BTN_STOCK_QBUY    = "⚡ دخول سريع"
+BTN_STOCK_QSELL   = "⚡ خروج سريع"
+BTN_STOCK_RESULTS = "📊 نتائج الأسهم"
 
-CB_SR_ANALYSIS        = "sr_analysis"
-CB_TREND_BREAK        = "trend_break"
-CB_FAKE_BREAK         = "fake_break"
-CB_COMPANIES_ANALYSIS = "companies_analysis"
+# الأدوات
+BTN_AVG_ADJUST    = "🧮 تعديل المتوسط"
+BTN_CONVERT       = "💱 تحويل العملات"
+BTN_PNL           = "📟 حاسبة ربح/خسارة"
+BTN_EXPECTED      = "🧮 سعر عقد متوقع"
+BTN_GEN_SETTINGS  = "⚙️ إعدادات عامة"
+BTN_SET_SECRET    = "🔐 الرمز السري للويبهوك"
+BTN_SETUP_WEBHOOK = "🌐 إعداد Webhook"
+BTN_TEST_CHANNEL  = "🛰️ اختبار القناة"
+BTN_LINK_CHANNEL  = "🔗 ربط البوت بالقناة"
+BTN_TEST_WEBHOOK  = "🧭 اختبار Webhook"
+BTN_QUICK_FIX     = "🛠️ إصلاح الربط السريع"
 
-CB_EDU_CHANNELS       = "edu_channels"
-CB_PUBLIC_MARKETING   = "public_marketing"
-CB_PUBLIC_EDU         = "public_edu"
-CB_PRIVATE_CHANNEL    = "private_channel"
+def kb_main():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(BTN_TRADING), KeyboardButton(BTN_TOOLS)],
+            [KeyboardButton(BTN_ANALYTICS), KeyboardButton(BTN_CHANNELS)],
+            [KeyboardButton(BTN_ADS), KeyboardButton(BTN_REPORTS)],
+            [KeyboardButton(BTN_SYSADMIN)]
+        ],
+        resize_keyboard=True, one_time_keyboard=False, input_field_placeholder="اختر من القوائم…"
+    )
 
-CB_ADS_CREATE         = "ads_create"
-CB_ADS_SEND_PRIVATE   = "ads_send_private"
-CB_ADS_SEND_PUBLIC    = "ads_send_public"
+def kb_trading():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(BTN_OPT_MENU), KeyboardButton(BTN_STOCK_MENU)],
+            [KeyboardButton(BTN_HOME)]
+        ],
+        resize_keyboard=True, one_time_keyboard=False
+    )
 
-CB_REPORT_WIN_LOSE    = "reports_all"
-CB_BEST_TRADE         = "best_trade"
-CB_WORST_TRADE_RENAMED= "least_trade"
+def kb_option_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(BTN_OPEN_CALL), KeyboardButton(BTN_OPEN_PUT)],
+            [KeyboardButton(BTN_CLOSE_OPT), KeyboardButton(BTN_PREVIEW)],
+            [KeyboardButton(BTN_TP1), KeyboardButton(BTN_TP2)],
+            [KeyboardButton(BTN_TP3), KeyboardButton(BTN_STOP)],
+            [KeyboardButton(BTN_RESULTS_OPT), KeyboardButton(BTN_EXP_ALERTS)],
+            [KeyboardButton(BTN_LEFT_WEEK), KeyboardButton(BTN_LEFT_3DAYS)],
+            [KeyboardButton(BTN_LEFT_TODAY), KeyboardButton(BTN_ANALYZE)],
+            [KeyboardButton(BTN_STATUS), KeyboardButton(BTN_PRICE_UPD)],
+            [KeyboardButton(BTN_SEARCH)],
+            [KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)]
+        ],
+        resize_keyboard=True, one_time_keyboard=False
+    )
 
-CB_BACK               = "back"
-CB_HOME               = "home"
+def kb_stock_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(BTN_STOCK_OPEN), KeyboardButton(BTN_STOCK_CLOSE)],
+            [KeyboardButton(BTN_STOCK_QBUY), KeyboardButton(BTN_STOCK_QSELL)],
+            [KeyboardButton(BTN_STOCK_RESULTS), KeyboardButton(BTN_SEARCH)],
+            [KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)]
+        ],
+        resize_keyboard=True, one_time_keyboard=False
+    )
 
-def main_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("📊 التداول", callback_data=CB_TRADING),
-           InlineKeyboardButton("🧰 الأدوات", callback_data=CB_TOOLS))
-    kb.add(InlineKeyboardButton("🧠 التحليلات", callback_data=CB_ANALYTICS),
-           InlineKeyboardButton("🛰️ القنوات والربط", callback_data=CB_CHANNELS))
-    kb.add(InlineKeyboardButton("📰 الإعلانات", callback_data=CB_ADS),
-           InlineKeyboardButton("📈 التقارير", callback_data=CB_REPORTS))
-    kb.add(InlineKeyboardButton("⚒️ إدارة النظام", callback_data=CB_SYSADMIN))
-    return kb
-
-def trading_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("💎 الأوبشن", callback_data=CB_OPEN_OPTION_MENU),
-           InlineKeyboardButton("📈 الأسهم", callback_data=CB_OPEN_STOCK_MENU))
-    kb.add(InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def option_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("🚀 فتح عقد Call", callback_data=CB_OPEN_CALL),
-           InlineKeyboardButton("📉 فتح عقد Put", callback_data=CB_OPEN_PUT))
-    kb.add(InlineKeyboardButton("🔐 إغلاق عقد", callback_data=CB_CLOSE_OPTION),
-           InlineKeyboardButton("🧪 معاينة قبل الإرسال", callback_data=CB_PREVIEW_SEND))
-    kb.add(InlineKeyboardButton("🎯 تحقق 100%", callback_data=CB_TARGET_100),
-           InlineKeyboardButton("🎯🎯 تحقق 200%", callback_data=CB_TARGET_200))
-    kb.add(InlineKeyboardButton("🎯 الهدف الثالث", callback_data=CB_TARGET_3),
-           InlineKeyboardButton("💥 تم ضرب وقف", callback_data=CB_STOP_HIT))
-    kb.add(InlineKeyboardButton("📊 نتائج العقود", callback_data=CB_RESULTS),
-           InlineKeyboardButton("🔔 تنبيهات الاستحقاق", callback_data=CB_EXP_ALERTS))
-    kb.add(InlineKeyboardButton("🗓️ تبقّى أسبوع", callback_data=CB_LEFT_WEEK),
-           InlineKeyboardButton("📆 تبقّى 3 أيام", callback_data=CB_LEFT_3DAYS))
-    kb.add(InlineKeyboardButton("⏳ ينتهي اليوم", callback_data=CB_LEFT_TODAY),
-           InlineKeyboardButton("🧾 تحليل العقد", callback_data=CB_ANALYZE_CONTRACT))
-    kb.add(InlineKeyboardButton("💬 استعلام حالة", callback_data=CB_STATUS_INQUIRY),
-           InlineKeyboardButton("⚙️ تحديثات سعرية", callback_data=CB_PRICE_UPDATE))
-    kb.add(InlineKeyboardButton("🔎 بحث", callback_data=CB_SEARCH_TRADE))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def stock_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("🟩 فتح صفقة سهم", callback_data=CB_OPEN_STOCK),
-           InlineKeyboardButton("🟥 إغلاق صفقة سهم", callback_data=CB_CLOSE_STOCK))
-    kb.add(InlineKeyboardButton("⚡ دخول سريع", callback_data=CB_QUICK_BUY),
-           InlineKeyboardButton("⚡ خروج سريع", callback_data=CB_QUICK_SELL))
-    kb.add(InlineKeyboardButton("📊 نتائج الأسهم", callback_data=CB_STOCK_RESULTS),
-           InlineKeyboardButton("🔎 بحث", callback_data=CB_SEARCH_TRADE))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def tools_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("🧮 تعديل المتوسط", callback_data=CB_AVG_ADJUST),
-           InlineKeyboardButton("💱 تحويل العملات", callback_data=CB_CONVERT_CURRENCY))
-    kb.add(InlineKeyboardButton("📟 حاسبة ربح/خسارة", callback_data=CB_PNL_CALC),
-           InlineKeyboardButton("🧮 سعر عقد متوقع", callback_data=CB_EXPECTED_PRICE))
-    kb.add(InlineKeyboardButton("⚙️ إعدادات عامة", callback_data=CB_GENERAL_SETTINGS),
-           InlineKeyboardButton("🔐 الرمز السري للويبهوك", callback_data=CB_SET_SECRET))
-    kb.add(InlineKeyboardButton("🌐 إعداد Webhook", callback_data=CB_SETUP_WEBHOOK),
-           InlineKeyboardButton("🛰️ اختبار القناة", callback_data=CB_TEST_CHANNEL))
-    kb.add(InlineKeyboardButton("🔗 ربط البوت بالقناة", callback_data=CB_LINK_BOT_CHANNEL),
-           InlineKeyboardButton("🧭 اختبار Webhook", callback_data=CB_TEST_WEBHOOK))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def analytics_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("🧱 الدعوم والمقاومات", callback_data=CB_SR_ANALYSIS),
-           InlineKeyboardButton("📉 كسر الترند", callback_data=CB_TREND_BREAK))
-    kb.add(InlineKeyboardButton("⚠️ كسر وهمي", callback_data=CB_FAKE_BREAK),
-           InlineKeyboardButton("🏢 تحليل الشركات", callback_data=CB_COMPANIES_ANALYSIS))
-    kb.add(InlineKeyboardButton("🎓 القناة التعليمية", callback_data=CB_EDU_CHANNELS))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def channels_menu():
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("📣 الاستثمار في التداول (عامة)", callback_data=CB_PUBLIC_MARKETING))
-    kb.add(InlineKeyboardButton("🎓 أكاديمية التداول الذهبي (تعليمية)", callback_data=CB_PUBLIC_EDU))
-    kb.add(InlineKeyboardButton("🔒 القناة الخاصة (للمشرف)", callback_data=CB_PRIVATE_CHANNEL))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def ads_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("📝 إنشاء إعلان", callback_data=CB_ADS_CREATE),
-           InlineKeyboardButton("📩 إرسال للخاص", callback_data=CB_ADS_SEND_PRIVATE))
-    kb.add(InlineKeyboardButton("📢 إرسال للقناة", callback_data=CB_ADS_SEND_PUBLIC))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def reports_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("📈 تقرير عام", callback_data=CB_REPORT_WIN_LOSE),
-           InlineKeyboardButton("🏆 أفضل صفقة", callback_data=CB_BEST_TRADE))
-    kb.add(InlineKeyboardButton("📉 أقل صفقة", callback_data=CB_WORST_TRADE_RENAMED))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
-
-def sysadmin_menu():
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(InlineKeyboardButton("🧭 اختبار Webhook", callback_data=CB_TEST_WEBHOOK),
-           InlineKeyboardButton("🛰️ اختبار القناة", callback_data=CB_TEST_CHANNEL))
-    kb.add(InlineKeyboardButton("🔗 ربط البوت بالقناة", callback_data=CB_LINK_BOT_CHANNEL),
-           InlineKeyboardButton("⚙️ إعدادات عامة", callback_data=CB_GENERAL_SETTINGS))
-    kb.add(InlineKeyboardButton("↩️ رجوع", callback_data=CB_BACK),
-           InlineKeyboardButton("🏠 الرئيسية", callback_data=CB_HOME))
-    return kb
+def kb_tools():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(BTN_AVG_ADJUST), KeyboardButton(BTN_CONVERT)],
+            [KeyboardButton(BTN_PNL), KeyboardButton(BTN_EXPECTED)],
+            [KeyboardButton(BTN_GEN_SETTINGS), KeyboardButton(BTN_SET_SECRET)],
+            [KeyboardButton(BTN_SETUP_WEBHOOK), KeyboardButton(BTN_TEST_CHANNEL)],
+            [KeyboardButton(BTN_LINK_CHANNEL), KeyboardButton(BTN_TEST_WEBHOOK)],
+            [KeyboardButton(BTN_QUICK_FIX)],
+            [KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)]
+        ],
+        resize_keyboard=True, one_time_keyboard=False
+    )
