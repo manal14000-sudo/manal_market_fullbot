@@ -1,18 +1,21 @@
 # -- coding: utf-8 --
 # محدث ليدعم ReplyKeyboard الثابتة + يبقي Inline القديمة شغالة
+
 import functools
+import logging
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config.settings import get_settings
 from config.strings import TTL
 from admin_bot import messages as AM
 
-# استيراد لوحات Inline القديمة (لا نحذفها)
+# لوحات Inline القديمة (لا نحذفها)
 from admin_bot.keyboards import *
 
-# استيراد اللوحات الثابتة الجديدة
+# لوحات ReplyKeyboard الثابتة الجديدة
 from admin_bot import keyboards_reply as rkb
 
+logger = logging.getLogger(_name_)
 
 # ----------------------------
 # ديكور للتحقق أن المستخدم مُشرف
@@ -21,15 +24,23 @@ def admin_only(dp):
     def decorator(handler):
         @functools.wraps(handler)
         async def wrapper(event, *args, **kwargs):
-            s = get_settings()
-            uid = event.from_user.id
-            admins = [int(x) for x in s.SUPER_ADMINS.split(",") if x.strip()]
-            if uid not in admins:
+            try:
+                s = get_settings()
+                uid = event.from_user.id
+                admins = [int(x) for x in s.SUPER_ADMINS.split(",") if x.strip()]
+                if uid not in admins:
+                    if isinstance(event, types.Message):
+                        return await event.answer("🔒 هذه الميزة للمشرفين فقط.")
+                    else:
+                        return await event.answer("للمشرف فقط", show_alert=True)
+                return await handler(event, *args, **kwargs)
+            except Exception as e:
+                logger.exception("admin_only error: %s", e)
+                # رسالة هادئة للمستخدم
                 if isinstance(event, types.Message):
-                    return await event.answer("🔒 هذه الميزة للمشرفين فقط.")
+                    return await event.answer("حدث خطأ غير متوقع. حاولي مرة أخرى.")
                 else:
-                    return await event.answer("للمشرف فقط", show_alert=True)
-            return await handler(event, *args, **kwargs)
+                    return await event.answer("خطأ غير متوقع", show_alert=True)
         return wrapper
     return decorator
 
@@ -38,7 +49,7 @@ def register(dp, bot):
     s = get_settings()
 
     # ----------------------------
-    # /start → يظهر لوحة ثابتة
+    # /start أو /menu → يظهر لوحة ثابتة
     # ----------------------------
     @dp.message_handler(commands=["start", "menu"])
     @admin_only(dp)
@@ -72,16 +83,16 @@ def register(dp, bot):
         if txt == rkb.BTN_TOOLS:
             return await message.answer(TTL["tools"], reply_markup=rkb.kb_tools())
 
-        # رجوع (هنا رجّعناه لقسم التداول — غيّريها لو تبين)
+        # رجوع (يمكن تغيير الوجهة لاحقًا)
         if txt == rkb.BTN_BACK:
-            return await message.answer("تم الرجوع.", reply_markup=rkb.kb_trading())
+            return await message.answer("↩️ تم الرجوع.", reply_markup=rkb.kb_trading())
 
-        # ===== أمثلة ربط الأزرار بوظائفك (نفس رسائلك الحالية) =====
+        # ===== ربط الأزرار بوظائف (نفس رسائلك الحالية/العينات) =====
         # الأوبشن
         if txt == rkb.BTN_OPEN_CALL:
-            return await message.answer("أرسلي CSV لفتح CALL: SYMBOL,EXP,STRIKE,ENTRY,TP1,TP2,TP3,SL")
+            return await message.answer("أرسلي CSV لفتح CALL:\nSYMBOL,EXP(YYYY-MM-DD),STRIKE,ENTRY,TP1,TP2,TP3,SL")
         if txt == rkb.BTN_OPEN_PUT:
-            return await message.answer("أرسلي CSV لفتح PUT: SYMBOL,EXP,STRIKE,ENTRY,TP1,TP2,TP3,SL")
+            return await message.answer("أرسلي CSV لفتح PUT:\nSYMBOL,EXP(YYYY-MM-DD),STRIKE,ENTRY,TP1,TP2,TP3,SL")
         if txt == rkb.BTN_TP1:
             return await message.answer("🎯 تم تحقيق هدف 100%")
         if txt == rkb.BTN_TP2:
@@ -111,13 +122,13 @@ def register(dp, bot):
 
         # الأسهم
         if txt == rkb.BTN_STOCK_OPEN:
-            return await message.answer("🚀 إدخلي تفاصيل فتح صفقة السهم…")
+            return await message.answer("🟩 فتح صفقة سهم — أرسلي: SYMBOL,ENTRY,[TP1-TP3],[SL]")
         if txt == rkb.BTN_STOCK_CLOSE:
-            return await message.answer("🔐 إدخلي تفاصيل إغلاق الصفقة…")
+            return await message.answer("🟥 إغلاق صفقة سهم — أرسلي: SYMBOL أو مُعرّف الصفقة + السبب")
         if txt == rkb.BTN_STOCK_QBUY:
-            return await message.answer("⚡ دخول سريع: …")
+            return await message.answer("⚡ دخول سريع (تنبيه للمشتركين)")
         if txt == rkb.BTN_STOCK_QSELL:
-            return await message.answer("⚡ خروج سريع: …")
+            return await message.answer("⚡ خروج سريع (تنبيه للمشتركين)")
         if txt == rkb.BTN_STOCK_RESULTS:
             return await message.answer("📊 نتائج الأسهم (سيتم التحديث)")
 
@@ -134,6 +145,7 @@ def register(dp, bot):
             return await message.answer("⚙️ إعدادات عامة…")
         if txt == rkb.BTN_SET_SECRET:
             return await message.answer("🔐 أدخلي الرمز السري للويبهوك…")
+
         if txt == rkb.BTN_SETUP_WEBHOOK:
             # مثال اختبار: إرسال رسالتين
             try:
@@ -142,6 +154,7 @@ def register(dp, bot):
             except Exception as e:
                 await message.answer(f"تعذّر اختبار الويبهوك: {e}")
             return
+
         if txt == rkb.BTN_TEST_CHANNEL:
             try:
                 await message.bot.send_message(s.PRIVATE_CHANNEL_ID, "🛰️ اختبار قناة: تم الوصول بنجاح.")
@@ -149,14 +162,17 @@ def register(dp, bot):
             except Exception as e:
                 await message.answer(f"تعذّر الوصول للقناة: {e}")
             return
+
         if txt == rkb.BTN_LINK_CHANNEL:
-            return await message.answer("🔗 ربط البوت بالقناة: ارفعي لي ID القناة أو أتحقّق من الإعدادات…")
+            return await message.answer("🔗 ربط البوت بالقناة: أرسلي ID القناة أو تأكدي من الإعدادات في .env")
+
         if txt == rkb.BTN_TEST_WEBHOOK:
             return await message.answer("🧭 اختبار Webhook (خارجي)…")
+
         if txt == rkb.BTN_QUICK_FIX:
             return await message.answer("🛠️ إصلاح الربط السريع — Placeholder.")
 
-        # إن لم يطابق أي زر: تجاهلي أو ارسلي توضيحًا
+        # إن لم يطابق أي زر: توجيه بسيط
         await message.answer("🚦 استخدمي الأزرار بالأسفل للتنقل بين القوائم.")
 
     # ------------------------------------------------------------------
@@ -213,7 +229,7 @@ def register(dp, bot):
     async def open_sysadmin(cb: types.CallbackQuery):
         await cb.message.edit_text("⚒️ إدارة النظام", reply_markup=sysadmin_menu()); await cb.answer()
 
-    # روابط القنوات (تبقى كما كانت)
+    # روابط القنوات (Inline)
     @dp.callback_query_handler(lambda c: c.data in (CB_PUBLIC_MARKETING, CB_PUBLIC_EDU, CB_PRIVATE_CHANNEL))
     @admin_only(dp)
     async def open_channel_links(cb: types.CallbackQuery):
